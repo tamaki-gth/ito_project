@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from EOM import RungeKutta, m1, m2, l1, l2, p1, p2, J1, J2, g, tau
+from mv import save_animation_2link
 
 # =========================
 # ハイパーパラメータ
@@ -73,7 +74,7 @@ class State:
 
     def decide_action(self, observation, episode):
         state = self.analog2digitize(observation)
-        epsilon = 0.5 * (1.0 / (episode + 1))
+        epsilon = 0.3 * 0.99**(episode + 1)
 
         if np.random.uniform(0, 1) < epsilon:
             action = np.random.choice(self.num_actions)
@@ -99,8 +100,8 @@ class Environment:
         self.num_actions = 9
         self.agent = Agent(self.num_actions)
 
-        self.tau1_mag = 2.0   # トルクの大きさ（EOMのスケールに合わせて調整）
-        self.tau2_mag = 2.0
+        self.tau1_mag = 16.0   # トルクの大きさ（EOMのスケールに合わせて調整）
+        self.tau2_mag = 10.0
 
         self.reward_history = []
         self.eval_history = []
@@ -135,7 +136,7 @@ class Environment:
         self.z = RungeKutta(self.z, DT, m1, m2, l1, l2, p1, p2, J1, J2, tau1, tau2, g)
         next_state = self.z.copy()
 
-        reward = -SCALE_CE * ce_step
+        reward = 0.0
         done = False
 
         return next_state, reward, done, ce_step
@@ -168,9 +169,14 @@ class Environment:
             ce_total = 0.0
             total_reward = 0.0
 
+            z_history=[]
+            action_history=[]
+
             for step in range(MAX_STEPS):
                 action = self.agent.get_action(observation, episode)
                 observation_next, reward_step, done, ce_step = self.step(action)
+                z_history.append(observation.copy())
+                action_history.append(action)
 
                 ce_total += ce_step
                 total_reward += reward_step
@@ -182,7 +188,7 @@ class Environment:
                     break
 
             reward_final = self.compute_release_reward(self.z, ce_total)
-            total_reward += reward_final
+            total_reward = reward_final
 
             # 終端状態での近似的なQ更新（同じ状態にとどまると仮定）
             final_state = self.z.copy()
@@ -190,6 +196,12 @@ class Environment:
             self.agent.update_Q_function(final_state, final_action, reward_final, final_state)
 
             self.reward_history.append(total_reward)
+
+
+            if episode==NUM_EPISODES-1:
+              z_array=np.array(z_history)
+              actions=np.array(action_history)
+              save_animation_2link(z_array,l1,l2,actions)
 
             # greedy 評価
 #            eval_return = self.evaluate_policy(num_eval_episodes=3)
@@ -260,6 +272,7 @@ def main():
         plt.title("2-link throwing Q-learning performance")
         plt.show()
 
+    
     np.set_printoptions(threshold=np.inf)
     print(env.agent.state.q_table)
 
