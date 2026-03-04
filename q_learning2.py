@@ -11,7 +11,7 @@ GAMMA = 0.9   # 割引率
 ALPHA = 0.1   # 学習率
 DT = tau      # 1ステップの時間刻み [s]
 MAX_STEPS = 2000      # 1エピソードのステップ数
-NUM_EPISODES = 5000   # エピソード数
+NUM_EPISODES = 2000   # エピソード数
 SCALE_CE = 0.01       # 累積消費エネルギーのスケール（要調整）
 
 # =========================
@@ -105,6 +105,7 @@ class Environment:
 
         self.reward_history = []
         self.eval_history = []
+        
 
         self.reset()
 
@@ -164,6 +165,12 @@ class Environment:
         return reward_final
 
     def run(self):
+
+        best_reward=-1e9
+        best_episode=-1
+        best_z_history=None
+        best_action_history=None
+        
         for episode in range(NUM_EPISODES):
             observation = self.reset()
             ce_total = 0.0
@@ -171,6 +178,9 @@ class Environment:
 
             z_history=[]
             action_history=[]
+
+            max_angle_vel=-1e9            
+                     
 
             for step in range(MAX_STEPS):
                 action = self.agent.get_action(observation, episode)
@@ -181,13 +191,23 @@ class Environment:
                 ce_total += ce_step
                 total_reward += reward_step
 
+                theta1, theta1_dot, theta2, theta2_dot = observation_next
+                theta_a = theta1 + theta2 - np.pi/2
+                _, _, _, _, v2 = forward_kinematics_and_velocity(observation_next)
+                theta_a_deg = np.rad2deg(theta_a)
+                angle_r = self.angle_reward(theta_a_deg)
+                inst_angle_vel = angle_r * v2
+
+                if inst_angle_vel > max_angle_vel:
+                    max_angle_vel = inst_angle_vel
+
                 self.agent.update_Q_function(observation, action, reward_step, observation_next)
                 observation = observation_next
 
                 if done:
                     break
 
-            reward_final = self.compute_release_reward(self.z, ce_total)
+            reward_final = max_angle_vel - SCALE_CE * ce_total
             total_reward = reward_final
 
             # 終端状態での近似的なQ更新（同じ状態にとどまると仮定）
@@ -197,11 +217,21 @@ class Environment:
 
             self.reward_history.append(total_reward)
 
+            if total_reward>best_reward:
+                best_reward=total_reward
+                best_episode=episode
+                best_z_history=np.array(z_history)
+                best_action_history=np.array(action_history)
 
-            if episode==NUM_EPISODES-1:
+
+        if best_action_history is not None:
+            print(f"Best reward={best_reward:.3f} at episode {best_episode}")
+            save_animation_2link(best_z_history,l1,l2,best_action_history)
+            
+            '''if episode==NUM_EPISODES-1:
               z_array=np.array(z_history)
               actions=np.array(action_history)
-              save_animation_2link(z_array,l1,l2,actions)
+              save_animation_2link(z_array,l1,l2,actions)'''
 
             # greedy 評価
 #            eval_return = self.evaluate_policy(num_eval_episodes=3)
@@ -234,6 +264,7 @@ class Environment:
             returns.append(total_reward)
 
         return np.mean(returns)'''
+    
 
 # =========================
 # メイン
