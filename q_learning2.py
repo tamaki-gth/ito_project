@@ -171,6 +171,8 @@ class Environment:
         best_z_history=None
         best_action_history=None
         best_max_step=None
+        best_angle_r_history = None
+        best_v2_history = None
         
         for episode in range(NUM_EPISODES):
             observation = self.reset()
@@ -185,6 +187,9 @@ class Environment:
 
             inst_angle_vel_history=[]
             ce_step_history=[]
+
+            angle_r_history = []
+            v2_history = []
                      
 
             for step in range(MAX_STEPS):
@@ -205,7 +210,8 @@ class Environment:
 
                 inst_angle_vel_history.append(inst_angle_vel)
                 ce_step_history.append(ce_step)
-
+                angle_r_history.append(angle_r)
+                v2_history.append(v2)
 
                 if inst_angle_vel > max_angle_vel:
                     max_angle_vel = inst_angle_vel
@@ -235,6 +241,8 @@ class Environment:
                 best_max_step=max_step
                 best_inst_angle_vel_history = inst_angle_vel_history.copy()
                 best_ce_step_history = ce_step_history.copy()
+                best_angle_r_history = angle_r_history.copy()
+                best_v2_history = v2_history.copy()
 
 
         if best_action_history is not None:
@@ -298,7 +306,9 @@ class Environment:
         inst = np.array(best_inst_angle_vel_history)
         ce_step = np.array(best_ce_step_history)
         ce_total = np.cumsum(ce_step)
-
+        angle_r = np.array(best_angle_r_history)
+        v2 = np.array(best_v2_history)
+        
         fig, ax1 = plt.subplots(figsize=(12,8))
         ax2 = ax1.twinx()
 
@@ -307,6 +317,9 @@ class Environment:
         ax1.axvline(best_max_step, color="red", linestyle="--", linewidth=2)
         ax1.text(best_max_step, inst.max(), f"Peak step = {best_max_step}",
          color="red", fontsize=12, fontweight="bold")
+        line_inst, = ax1.plot(inst, label="inst_angle_vel", color="blue")
+        line_angle_r, = ax1.plot(angle_r, label="angle_r", color="purple", linestyle="--")
+        line_v2, = ax1.plot(v2, label="v2", color="cyan", linestyle="--")
 
 
         # 右軸：ce_step と ce_total
@@ -320,7 +333,7 @@ class Environment:
 
 
         # 凡例まとめ
-        lines = [line_inst, line_ce_step, line_ce_total]
+        lines = [line_inst,line_angle_r,line_v2, line_ce_step, line_ce_total]
         labels = [l.get_label() for l in lines]
         ax1.legend(lines, labels, loc="upper left")
 
@@ -365,12 +378,12 @@ class Environment:
         # 左軸：運動エネルギー
         line_T1, = ax1.plot(steps, T1, label="T1 (kinetic link1)", color="blue")
         line_T2, = ax1.plot(steps, T2, label="T2 (kinetic link2)", color="cyan")
-        line_Ttot, = ax1.plot(steps, T_total, label="T_total", color="navy")
+        #line_Ttot, = ax1.plot(steps, T_total, label="T_total", color="navy")
         
         # 右軸：位置エネルギー
         line_V1, = ax2.plot(steps, V1, label="V1 (potential link1)", color="orange")
         line_V2, = ax2.plot(steps, V2, label="V2 (potential link2)", color="red")
-        line_Vtot, = ax2.plot(steps, V_total, label="V_total", color="darkred")
+        #line_Vtot, = ax2.plot(steps, V_total, label="V_total", color="darkred")
         
         # Peak step
         ax1.axvline(best_max_step, color="black", linestyle="--", linewidth=2)
@@ -383,7 +396,8 @@ class Environment:
         ax2.set_ylabel("Potential energy")
         
         # 凡例まとめ
-        lines = [line_T1, line_T2, line_Ttot, line_V1, line_V2, line_Vtot]
+        #lines = [line_T1, line_T2, line_Ttot, line_V1, line_V2, line_Vtot]
+        lines = [line_T1, line_T2, line_V1, line_V2]
         labels = [l.get_label() for l in lines]
         ax1.legend(lines, labels, loc="upper right")
         
