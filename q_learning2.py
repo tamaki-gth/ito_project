@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from EOM import RungeKutta, m1, m2, l1, l2, p1, p2, J1, J2, g, tau
 from mv import save_animation_2link
+from graph import plot_state,plot_rewards,plot_energy
 
 # =========================
 # ハイパーパラメータ
@@ -160,13 +161,13 @@ class Environment:
         _, _, x_dot, y_dot, v2 = forward_kinematics_and_velocity(z)
 
         if x_dot<=0:
-            return -1.0-SCALE_CE*ce_total
+            return -1.0-SCALE_CE*ce_total,0.0
 
         theta=np.arctan2(y_dot,x_dot)
         R=(v2**2/g)*np.sin(2*theta)
 
         reward_final = R - SCALE_CE * ce_total
-        return reward_final
+        return reward_final, R
 
     def run(self):
 
@@ -176,7 +177,8 @@ class Environment:
         best_action_history=None
         best_max_step=None
         best_v2_history = None
-        best_R=None
+        best_R_history=None
+        best_R_distance=None
         
         for episode in range(NUM_EPISODES):
             observation = self.reset()
@@ -190,6 +192,7 @@ class Environment:
             ce_step_history=[]
             v2_history = []
             max_R=-1e9
+            R_distance=[]
                      
 
             for step in range(MAX_STEPS):
@@ -205,9 +208,9 @@ class Environment:
                 theta_a = theta1 + theta2 - np.pi/2
                 _, _, x_dot, y_dot, v2 = forward_kinematics_and_velocity(observation_next)
                 v2_history.append(v2)
-                R_step = self.compute_release_reward(observation_next, ce_total)
+                R_step,R_fly = self.compute_release_reward(observation_next, ce_total)
                 R_history.append(R_step)
-                
+                R_distance.append(R_fly)
                 ce_step_history.append(ce_step)
 
                 if R_step > max_R:
@@ -238,204 +241,34 @@ class Environment:
                 best_max_step=max_step
                 best_ce_step_history = ce_step_history.copy()
                 best_v2_history = v2_history.copy()
+                best_R_history=R_history.copy()
+                best_R_distance_history=R_distance.copy()
 
 
         if best_action_history is not None:
             print(f"Best reward={best_reward:.3f} at episode {best_episode}")
             print(f"Peak step={best_max_step}")
-            save_animation_2link(best_z_history,l1,l2,best_action_history,best_max_step)
+            save_animation_2link(best_z_history,l1,l2,best_action_history,best_max_step,DT)
 
         # ============================
         # ① 状態量グラフ（静止画版）
         # ============================
 
-        theta1 = best_z_history[:,0]
-        theta1_dot = best_z_history[:,1]
-        theta2 = best_z_history[:,2]
-        theta2_dot = best_z_history[:,3]
-        actions = best_action_history
-
-        steps = np.arange(len(theta1))
-
-        fig, ax1 = plt.subplots(figsize=(12,8))
-        ax2 = ax1.twinx()
-
-        
-        # 左軸：角度
-        line_theta1, = ax1.plot(steps, theta1, label="theta1", color="blue")
-        line_theta2, = ax1.plot(steps, theta2, label="theta2", color="green")
-        line_action, = ax1.plot(steps, actions, label="action", color="orange", alpha=0.5)
-
-
-
-        # 右軸：角速度
-        line_theta1_dot, = ax2.plot(steps, theta1_dot, label="theta1_dot", color="red", alpha=0.6)
-        line_theta2_dot, = ax2.plot(steps, theta2_dot, label="theta2_dot", color="purple", alpha=0.6)
-
-        # アクション
-        line_action, = ax1.plot(steps, actions, label="action", color="orange", alpha=0.5)
-
-        # ピークステップの縦線
-        ax1.axvline(best_max_step, color="black", linestyle="--", linewidth=2)
-        ax1.text(best_max_step, max(theta1), f"Peak step = {best_max_step}",
-         color="black", fontsize=12, fontweight="bold")
-
-        ax1.set_title("State variables (best episode)")
-        ax1.set_xlabel("Step")
-        ax1.set_ylabel("Angle / Action")
-        ax2.set_ylabel("Angular velocity")
-
-        # 凡例まとめ
-        lines = [line_theta1, line_theta2, line_action, line_theta1_dot, line_theta2_dot]
-        labels =[l.get_label() for l in lines]
-        ax1.legend(lines, labels, loc="upper right")
-
-        plt.tight_layout()
-        plt.show()
+        plot_state(best_z_history,best_action_history,best_max_step,DT)
 
 
         # ============================
         # ② 報酬内訳グラフ（1枚にまとめる）
         # ============================
 
-        inst = np.array(best_inst_angle_vel_history)
-        ce_step = np.array(best_ce_step_history)
-        ce_total = np.cumsum(ce_step)
-        angle_r = np.array(best_angle_r_history)
-        v2 = np.array(best_v2_history)
-        
-        fig, ax1 = plt.subplots(figsize=(12,8))
-        ax2 = ax1.twinx()
-
-        # 左軸：inst_angle_vel
-        line_inst, = ax1.plot(inst, label="inst_angle_vel", color="blue")
-        ax1.axvline(best_max_step, color="red", linestyle="--", linewidth=2)
-        ax1.text(best_max_step, inst.max(), f"Peak step = {best_max_step}",
-         color="red", fontsize=12, fontweight="bold")
-        line_inst, = ax1.plot(inst, label="inst_angle_vel", color="blue")
-        line_angle_r, = ax1.plot(angle_r, label="angle_r", color="purple", linestyle="--")
-        line_v2, = ax1.plot(v2, label="v2", color="cyan", linestyle="--")
-
-
-        # 右軸：ce_step と ce_total
-        line_ce_step, = ax2.plot(ce_step, label="ce_step", color="orange", alpha=0.6)
-        line_ce_total, = ax2.plot(ce_total, label="ce_total", color="green", alpha=0.6)
-
-        ax1.set_title("Reward breakdown (best episode)")
-        ax1.set_xlabel("Step")
-        ax1.set_ylabel("inst_angle_vel")
-        ax2.set_ylabel("Energy")
-
-
-        # 凡例まとめ
-        lines = [line_inst,line_angle_r,line_v2, line_ce_step, line_ce_total]
-        labels = [l.get_label() for l in lines]
-        ax1.legend(lines, labels, loc="upper left")
-
-
-        
-        plt.tight_layout()
-        plt.show()
+        plot_rewards(best_R_history,best_ce_step_history,best_v2_history,best_R_distance_history,best_max_step,DT)
 
         # ============================
         # ③ エネルギー（運動＋位置）の推移
         # ============================
         
-        theta1 = best_z_history[:,0]
-        theta1_dot = best_z_history[:,1]
-        theta2 = best_z_history[:,2]
-        theta2_dot = best_z_history[:,3]
+        plot_energy(best_z_history, best_max_step, m1, m2, l1, l2, p1, p2, J1, J2,g, DT)
         
-        # リンク1の重心速度
-        v_c1_sq = (p1 * theta1_dot)**2
-        T1 = 0.5 * m1 * v_c1_sq + 0.5 * J1 * theta1_dot**2
-        
-        # リンク2の重心速度
-        v_c2_sq = (l1 * theta1_dot)**2 + (p2 * theta2_dot)**2 \
-            + 2 * l1 * p2 * theta1_dot * theta2_dot * np.cos(theta2)
-        T2 = 0.5 * m2 * v_c2_sq + 0.5 * J2 * (theta1_dot + theta2_dot)**2
-        
-        # 位置エネルギー
-        y_c1 = p1 * np.sin(theta1)
-        y_c2 = l1 * np.sin(theta1) + p2 * np.sin(theta1 + theta2)
-        
-        V1 = m1 * g * y_c1
-        V2 = m2 * g * y_c2
-        
-        T_total = T1 + T2
-        V_total = V1 + V2
-        
-        steps = np.arange(len(theta1))
-    
-        fig, ax1 = plt.subplots(figsize=(12,8))
-        ax2 = ax1.twinx()
-        
-        # 左軸：運動エネルギー
-        line_T1, = ax1.plot(steps, T1, label="T1 (kinetic link1)", color="blue")
-        line_T2, = ax1.plot(steps, T2, label="T2 (kinetic link2)", color="cyan")
-        #line_Ttot, = ax1.plot(steps, T_total, label="T_total", color="navy")
-        
-        # 右軸：位置エネルギー
-        line_V1, = ax2.plot(steps, V1, label="V1 (potential link1)", color="orange")
-        line_V2, = ax2.plot(steps, V2, label="V2 (potential link2)", color="red")
-        #line_Vtot, = ax2.plot(steps, V_total, label="V_total", color="darkred")
-        
-        # Peak step
-        ax1.axvline(best_max_step, color="black", linestyle="--", linewidth=2)
-        ax1.text(best_max_step, T_total.max(), f"Peak step = {best_max_step}",
-                 color="black", fontsize=12, fontweight="bold")
-        
-        ax1.set_title("Energy (kinetic + potential) of each link")
-        ax1.set_xlabel("Step")
-        ax1.set_ylabel("Kinetic energy")
-        ax2.set_ylabel("Potential energy")
-        
-        # 凡例まとめ
-        #lines = [line_T1, line_T2, line_Ttot, line_V1, line_V2, line_Vtot]
-        lines = [line_T1, line_T2, line_V1, line_V2]
-        labels = [l.get_label() for l in lines]
-        ax1.legend(lines, labels, loc="upper right")
-        
-        plt.tight_layout()
-        plt.show()
-            
-        '''if episode==NUM_EPISODES-1:
-              z_array=np.array(z_history)
-              actions=np.array(action_history)
-              save_animation_2link(z_array,l1,l2,actions)'''
-
-            # greedy 評価
-#            eval_return = self.evaluate_policy(num_eval_episodes=3)
- #           self.eval_history.append(eval_return)
-
-#            if (episode + 1) % 100 == 0:
-#                print(f"Episode {episode+1}, total_reward = {total_reward:.3f}, eval = {eval_return:.3f}")
-
-    '''def evaluate_policy(self, num_eval_episodes=3):
-        returns = []
-        for _ in range(num_eval_episodes):
-            observation = self.reset()
-            ce_total = 0.0
-            total_reward = 0.0
-
-            for step in range(MAX_STEPS):
-                state_idx = self.agent.state.analog2digitize(observation)
-                action = np.argmax(self.agent.state.q_table[state_idx, :])
-
-                observation_next, reward_step, done, ce_step = self.step(action)
-                ce_total += ce_step
-                total_reward += reward_step
-                observation = observation_next
-
-                if done:
-                    break
-
-            reward_final = self.compute_release_reward(self.z, ce_total)
-            total_reward += reward_final
-            returns.append(total_reward)
-
-        return np.mean(returns)'''
-    
 
 # =========================
 # メイン
@@ -451,16 +284,6 @@ def main():
     plt.ylabel("Total reward")
     plt.title("Episode reward")
     plt.show()
-
-    # ② greedy 評価の推移
-    '''
-    plt.figure()
-    plt.plot(env.eval_history)
-    plt.xlabel("Episode")
-    plt.ylabel("Greedy evaluation return")
-    plt.title("Greedy policy performance")
-    plt.show()
-    '''
 
     # ③ 移動平均（おまけ）
     window = 100
