@@ -157,11 +157,15 @@ class Environment:
     def compute_release_reward(self, z, ce_total):
         theta1, theta1_dot, theta2, theta2_dot = z
 
-        theta_a = theta1 + theta2 - np.pi/2
-        _, _, _, _, v2 = forward_kinematics_and_velocity(z)
+        _, _, x_dot, y_dot, v2 = forward_kinematics_and_velocity(z)
 
-        theta_a_deg=np.rad2deg(theta_a)
-        reward_final = self.angle_reward(theta_a_deg) * v2 - SCALE_CE * ce_total
+        if x_dot<=0:
+            return -1.0-SCALE_CE*ce_total
+
+        theta=np.arctan2(y_dot,x_dot)
+        R=(v2**2/g)*np.sin(2*theta)
+
+        reward_final = R - SCALE_CE * ce_total
         return reward_final
 
     def run(self):
@@ -171,8 +175,8 @@ class Environment:
         best_z_history=None
         best_action_history=None
         best_max_step=None
-        best_angle_r_history = None
         best_v2_history = None
+        best_R=None
         
         for episode in range(NUM_EPISODES):
             observation = self.reset()
@@ -181,15 +185,11 @@ class Environment:
 
             z_history=[]
             action_history=[]
-
-            max_angle_vel=-1e9
             max_step=-1
-
-            inst_angle_vel_history=[]
+            R_history=[]
             ce_step_history=[]
-
-            angle_r_history = []
             v2_history = []
+            max_R=-1e9
                      
 
             for step in range(MAX_STEPS):
@@ -203,18 +203,15 @@ class Environment:
 
                 theta1, theta1_dot, theta2, theta2_dot = observation_next
                 theta_a = theta1 + theta2 - np.pi/2
-                _, _, _, _, v2 = forward_kinematics_and_velocity(observation_next)
-                theta_a_deg = np.rad2deg(theta_a)
-                angle_r = self.angle_reward(theta_a_deg)
-                inst_angle_vel = angle_r * v2
-
-                inst_angle_vel_history.append(inst_angle_vel)
-                ce_step_history.append(ce_step)
-                angle_r_history.append(angle_r)
+                _, _, x_dot, y_dot, v2 = forward_kinematics_and_velocity(observation_next)
                 v2_history.append(v2)
+                R_step = self.compute_release_reward(observation_next, ce_total)
+                R_history.append(R_step)
+                
+                ce_step_history.append(ce_step)
 
-                if inst_angle_vel > max_angle_vel:
-                    max_angle_vel = inst_angle_vel
+                if R_step > max_R:
+                    max_R = R_step
                     max_step=step
 
                 self.agent.update_Q_function(observation, action, reward_step, observation_next)
@@ -223,7 +220,7 @@ class Environment:
                 if done:
                     break
 
-            reward_final = max_angle_vel - SCALE_CE * ce_total
+            reward_final = max_R
             total_reward = reward_final
 
             # 終端状態での近似的なQ更新（同じ状態にとどまると仮定）
@@ -239,9 +236,7 @@ class Environment:
                 best_z_history=np.array(z_history)
                 best_action_history=np.array(action_history)
                 best_max_step=max_step
-                best_inst_angle_vel_history = inst_angle_vel_history.copy()
                 best_ce_step_history = ce_step_history.copy()
-                best_angle_r_history = angle_r_history.copy()
                 best_v2_history = v2_history.copy()
 
 
